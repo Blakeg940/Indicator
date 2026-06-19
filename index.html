@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Starfall — Dodge & Catch</title>
+<style>
+  :root { --bg:#0b0f1a; --fg:#e8ecf5; --accent:#5ee0c0; --bad:#ff5a7a; --good:#ffd95e; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; }
+  body {
+    background:radial-gradient(circle at 50% -10%, #16203a, var(--bg));
+    color:var(--fg);
+    font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100%; gap:14px; padding:16px; touch-action:none; user-select:none;
+  }
+  h1 { font-size:1.4rem; letter-spacing:.5px; font-weight:700; }
+  h1 span { color:var(--accent); }
+  .hud { display:flex; gap:24px; font-variant-numeric:tabular-nums; font-size:1rem; }
+  .hud b { color:var(--accent); }
+  .hud .lives b { color:var(--bad); }
+  canvas {
+    background:linear-gradient(#0a1426,#060a14);
+    border:1px solid #1e2c4a; border-radius:14px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5); max-width:100%; height:auto; touch-action:none;
+  }
+  .hint { font-size:.85rem; opacity:.65; text-align:center; }
+  .overlay {
+    position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:16px;
+    background:rgba(6,10,20,.82); backdrop-filter:blur(4px); text-align:center; padding:24px;
+  }
+  .overlay h2 { font-size:2rem; }
+  .overlay p { opacity:.8; max-width:420px; line-height:1.5; }
+  button {
+    background:var(--accent); color:#04201a; border:none; border-radius:999px;
+    padding:12px 28px; font-size:1rem; font-weight:700; cursor:pointer;
+    transition:transform .08s ease, filter .15s ease;
+  }
+  button:hover { filter:brightness(1.08); }
+  button:active { transform:scale(.96); }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+  <h1>Star<span>fall</span></h1>
+  <div class="hud">
+    <div>Score <b id="score">0</b></div>
+    <div>Best <b id="best">0</b></div>
+    <div class="lives">Lives <b id="lives">3</b></div>
+  </div>
+  <canvas id="game" width="420" height="560"></canvas>
+  <div class="hint">Move with ← → / A D, or drag &amp; tilt. Catch <span style="color:var(--good)">stars</span>, dodge <span style="color:var(--bad)">bombs</span>.</div>
+
+  <div class="overlay" id="overlay">
+    <h2 id="ovTitle">Starfall</h2>
+    <p id="ovText">Catch the golden stars to score. Avoid the red bombs — three hits and it's over. Things speed up the longer you survive. Good luck!</p>
+    <button id="startBtn">Play</button>
+  </div>
+
+<script>
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+
+const $ = id => document.getElementById(id);
+const els = { score:$('score'), best:$('best'), lives:$('lives'),
+              overlay:$('overlay'), ovTitle:$('ovTitle'), ovText:$('ovText'), startBtn:$('startBtn') };
+
+let best = +(localStorage.getItem('starfall_best') || 0);
+els.best.textContent = best;
+
+const player = { w:64, h:14, x:W/2, y:H-40, speed:7 };
+let items = [];      // {x,y,r,vy,type:'star'|'bomb',spin}
+let particles = [];
+let score, lives, tick, spawnEvery, running;
+const keys = {};
+
+function reset() {
+  items = []; particles = [];
+  score = 0; lives = 3; tick = 0; spawnEvery = 48; running = true;
+  player.x = W/2;
+  updateHUD();
+}
+
+function updateHUD() {
+  els.score.textContent = score;
+  els.lives.textContent = lives;
+  els.best.textContent = best;
+}
+
+function spawn() {
+  const r = 14;
+  const x = r + Math.random() * (W - 2*r);
+  const bomb = Math.random() < Math.min(0.18 + tick/9000, 0.4);
+  const speed = 2 + Math.random()*1.5 + tick/1400;
+  items.push({ x, y:-r, r, vy:speed, type: bomb ? 'bomb':'star', spin:Math.random()*Math.PI });
+}
+
+function burst(x,y,color,n=14) {
+  for (let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2, s = 1+Math.random()*4;
+    particles.push({ x,y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:1, color });
+  }
+}
+
+function drawStar(x,y,r,rot,fill){
+  ctx.save(); ctx.translate(x,y); ctx.rotate(rot);
+  ctx.beginPath();
+  for(let i=0;i<5;i++){
+    const o = i*(Math.PI*2/5) - Math.PI/2;
+    ctx.lineTo(Math.cos(o)*r, Math.sin(o)*r);
+    const im = o + Math.PI/5;
+    ctx.lineTo(Math.cos(im)*r*0.45, Math.sin(im)*r*0.45);
+  }
+  ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+  ctx.restore();
+}
+
+function update() {
+  tick++;
+  if (tick % Math.max(14, Math.floor(spawnEvery - tick/120)) === 0) spawn();
+
+  if (keys.left)  player.x -= player.speed;
+  if (keys.right) player.x += player.speed;
+  player.x = Math.max(player.w/2, Math.min(W - player.w/2, player.x));
+
+  for (const it of items) it.y += it.vy;
+
+  // collisions with paddle / floor
+  for (const it of items) {
+    if (it.dead) continue;
+    const withinX = it.x > player.x - player.w/2 - it.r && it.x < player.x + player.w/2 + it.r;
+    const hitPaddle = withinX && it.y + it.r >= player.y - player.h/2 && it.y - it.r <= player.y + player.h/2;
+    if (hitPaddle) {
+      it.dead = true;
+      if (it.type === 'star') { score += 10; burst(it.x, it.y, '#ffd95e'); }
+      else { lives--; burst(it.x, it.y, '#ff5a7a', 22); flash = 1; if (lives<=0) gameOver(); }
+      updateHUD();
+    } else if (it.y - it.r > H) {
+      it.dead = true; // missed
+    }
+  }
+  items = items.filter(it => !it.dead);
+
+  for (const p of particles){ p.x+=p.vx; p.y+=p.vy; p.vy+=0.12; p.life-=0.03; }
+  particles = particles.filter(p => p.life > 0);
+}
+
+let flash = 0;
+function render() {
+  ctx.clearRect(0,0,W,H);
+
+  // ambient stars
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  for (let i=0;i<40;i++){
+    const sx = (i*97 % W), sy = ((i*53 + tick*0.6) % H);
+    ctx.globalAlpha = 0.15 + (i%5)*0.06;
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  for (const it of items) {
+    if (it.type === 'star') {
+      ctx.shadowColor = '#ffd95e'; ctx.shadowBlur = 14;
+      drawStar(it.x, it.y, it.r, it.spin + tick*0.05, '#ffd95e');
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.shadowColor = '#ff5a7a'; ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.arc(it.x, it.y, it.r, 0, Math.PI*2);
+      ctx.fillStyle = '#ff5a7a'; ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#7a0d22';
+      ctx.fillRect(it.x-2, it.y-it.r-5, 4, 6); // fuse
+    }
+  }
+
+  for (const p of particles){
+    ctx.globalAlpha = Math.max(0,p.life);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+
+  // paddle
+  const g = ctx.createLinearGradient(player.x-player.w/2,0,player.x+player.w/2,0);
+  g.addColorStop(0,'#5ee0c0'); g.addColorStop(1,'#3aa0ff');
+  ctx.fillStyle = g;
+  roundRect(player.x-player.w/2, player.y-player.h/2, player.w, player.h, 7); ctx.fill();
+
+  if (flash > 0){
+    ctx.fillStyle = `rgba(255,90,122,${flash*0.35})`;
+    ctx.fillRect(0,0,W,H); flash -= 0.05;
+  }
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function loop() {
+  if (running) update();
+  render();
+  requestAnimationFrame(loop);
+}
+
+function gameOver() {
+  running = false;
+  if (score > best) { best = score; localStorage.setItem('starfall_best', best); }
+  updateHUD();
+  els.ovTitle.textContent = 'Game Over';
+  els.ovText.textContent = `You scored ${score}. Best: ${best}. Want another run?`;
+  els.startBtn.textContent = 'Play Again';
+  els.overlay.classList.remove('hidden');
+}
+
+function start() {
+  els.overlay.classList.add('hidden');
+  reset();
+}
+
+// input
+addEventListener('keydown', e => {
+  if (e.key==='ArrowLeft'||e.key==='a'||e.key==='A') keys.left = true;
+  if (e.key==='ArrowRight'||e.key==='d'||e.key==='D') keys.right = true;
+  if ((e.key===' '||e.key==='Enter') && !running) start();
+});
+addEventListener('keyup', e => {
+  if (e.key==='ArrowLeft'||e.key==='a'||e.key==='A') keys.left = false;
+  if (e.key==='ArrowRight'||e.key==='d'||e.key==='D') keys.right = false;
+});
+
+function pointerMove(clientX){
+  const rect = cv.getBoundingClientRect();
+  const scale = W / rect.width;
+  player.x = (clientX - rect.left) * scale;
+}
+cv.addEventListener('mousemove', e => { if (running) pointerMove(e.clientX); });
+cv.addEventListener('touchmove', e => { if (running){ pointerMove(e.touches[0].clientX); e.preventDefault(); } }, {passive:false});
+cv.addEventListener('touchstart', e => { if (running){ pointerMove(e.touches[0].clientX); e.preventDefault(); } }, {passive:false});
+
+els.startBtn.addEventListener('click', start);
+
+loop();
+</script>
+</body>
+</html>
