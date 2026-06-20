@@ -1,31 +1,28 @@
 //@version=6
 indicator("PlayBit EMA", "PB-EMA", overlay=true)
 
-// === MAIN BAND SETTINGS ===
-length    = input.int(200, "Length")
+// === ORIGINAL CODE ===
+length = input.int(200, "Length")
 lineColor = input.color(#000000, "Line-Color")
-
-emaTop = ta.ema(input.source(high,  "Top-Source"), length)
+emaTop = ta.ema(input.source(high, "Top-Source"), length)
 emaBot = ta.ema(input.source(close, "Bot-Source"), length)
+fillColor =  close < emaBot ? input.color(color.rgb(255, 0, 0, 67), "Fill-Color-Below") :
+             close > emaTop ? input.color(color.rgb(27, 255, 27, 67), "Fill-Color-Above") :
+                              input.color(color.rgb(120, 123, 134, 67), "Fill-Color-Neutral")
 
-// === FILL COLOR INPUTS ===
-colorBelow   = input.color(color.rgb(255, 0,   0,   67), "Fill-Color-Below")
-colorAbove   = input.color(color.rgb(27,  255, 27,  67), "Fill-Color-Above")
-colorNeutral = input.color(color.rgb(120, 123, 134, 67), "Fill-Color-Neutral")
-
-// === TREND CONFIRMATION FILTER (Tier 1) ===
-// Short EMA must agree with band color — if it disagrees, fill stays neutral.
+// === TIER 1: TREND CONFIRMATION FILTER ===
+// Overrides fillColor to neutral gray if the short EMA disagrees with the signal.
 trendLength  = input.int(50, "Trend-Filter EMA Length", minval=1)
 showTrendEma = input.bool(false, "Show Trend-Filter EMA Line")
 emaTrend     = ta.ema(close, trendLength)
 
 bullConfirmed = close > emaTop and emaTrend > emaBot
 bearConfirmed = close < emaBot and emaTrend < emaTop
+neutralColor  = color.rgb(120, 123, 134, 67)
+confirmedFill = (close > emaTop and not bullConfirmed) or (close < emaBot and not bearConfirmed) ? neutralColor : fillColor
 
-fillColor = bearConfirmed ? colorBelow : bullConfirmed ? colorAbove : colorNeutral
-
-// === PLOTS ===
+// === PLOTS (original, using confirmedFill instead of fillColor) ===
 pTop = plot(emaTop, color=lineColor)
 pBot = plot(emaBot, color=lineColor)
+fill(pTop, pBot, color=confirmedFill, fillgaps=true)
 plot(showTrendEma ? emaTrend : na, color=color.orange, linewidth=1, title="Trend EMA")
-fill(pTop, pBot, color=fillColor, fillgaps=true)
