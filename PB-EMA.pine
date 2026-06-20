@@ -1,30 +1,15 @@
 //@version=6
 indicator("PlayBit EMA", "PB-EMA", overlay=true)
 
-// === ORIGINAL CODE ===
-length      = input.int(200, "Length")
-lineColor   = input.color(#000000, "Line-Color")
-colorBelow   = input.color(color.rgb(255, 0, 0, 67),     "Fill-Color-Below")
-colorAbove   = input.color(color.rgb(27, 255, 27, 67),   "Fill-Color-Above")
-colorNeutral = input.color(color.rgb(120, 123, 134, 67), "Fill-Color-Neutral")
-
-emaTop = ta.ema(input.source(high,  "Top-Source"), length)
+length = input.int(200, "Length")
+lineColor = input.color(#000000, "Line-Color")
+emaTop = ta.ema(input.source(high, "Top-Source"), length)
 emaBot = ta.ema(input.source(close, "Bot-Source"), length)
-
-fillColor = close < emaBot ? colorBelow : close > emaTop ? colorAbove : colorNeutral
-
-// === TIER 1: TREND CONFIRMATION FILTER ===
-// Overrides fill to neutral if the short EMA disagrees with the breakout direction.
-trendLength  = input.int(50, "Trend-Filter EMA Length", minval=1)
-showTrendEma = input.bool(false, "Show Trend-Filter EMA Line")
-emaTrend     = ta.ema(close, trendLength)
-
-bullConfirmed = close > emaTop and emaTrend > emaBot
-bearConfirmed = close < emaBot and emaTrend < emaTop
-confirmedFill = (close > emaTop and not bullConfirmed) or (close < emaBot and not bearConfirmed) ? colorNeutral : fillColor
-
-// === PLOTS ===
+fillColor =  close < emaBot ? input.color(color.rgb(255, 0, 0, 67), "Fill-Color-Below") : 
+             close > emaTop ? input.color(color.rgb(27, 255, 27, 67), "Fill-Color-Above") : 
+                              input.color(color.rgb(120, 123, 134, 67), "Fill-Color-Neutral")
 pTop = plot(emaTop, color=lineColor)
 pBot = plot(emaBot, color=lineColor)
-fill(pTop, pBot, color=confirmedFill, fillgaps=true)
-plot(showTrendEma ? emaTrend : na, color=color.orange, linewidth=1, title="Trend EMA")
+fill(pTop, pBot, color=fillColor, fillgaps=true)
+
+  
