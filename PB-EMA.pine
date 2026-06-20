@@ -5,11 +5,21 @@ length = input.int(200, "Length")
 lineColor = input.color(#000000, "Line-Color")
 emaTop = ta.ema(input.source(high, "Top-Source"), length)
 emaBot = ta.ema(input.source(close, "Bot-Source"), length)
-fillColor =  close < emaBot ? input.color(color.rgb(255, 0, 0, 67), "Fill-Color-Below") : 
-             close > emaTop ? input.color(color.rgb(27, 255, 27, 67), "Fill-Color-Above") : 
+fillColor =  close < emaBot ? input.color(color.rgb(255, 0, 0, 67), "Fill-Color-Below") :
+             close > emaTop ? input.color(color.rgb(27, 255, 27, 67), "Fill-Color-Above") :
                               input.color(color.rgb(120, 123, 134, 67), "Fill-Color-Neutral")
 pTop = plot(emaTop, color=lineColor)
 pBot = plot(emaBot, color=lineColor)
 fill(pTop, pBot, color=fillColor, fillgaps=true)
 
-  
+// === ATR STOP-LOSS ===
+atrLength     = input.int(14, "ATR Length", group="Stop-Loss")
+atrMultiplier = input.float(1.5, "ATR Multiplier", step=0.1, group="Stop-Loss")
+showStops     = input.bool(true, "Show Stop-Loss Lines", group="Stop-Loss")
+
+atr       = ta.atr(atrLength)
+longStop  = close - atr * atrMultiplier
+shortStop = close + atr * atrMultiplier
+
+plot(showStops and close > emaTop ? longStop  : na, "Long Stop",  color=color.red,   style=plot.style_linebr, linewidth=1)
+plot(showStops and close < emaBot ? shortStop : na, "Short Stop", color=color.green, style=plot.style_linebr, linewidth=1)
