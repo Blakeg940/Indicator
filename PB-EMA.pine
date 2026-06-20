@@ -1,0 +1,30 @@
+//@version=5
+indicator("PlayBit EMA", "PB-EMA", overlay=true)
+
+// === MAIN BAND SETTINGS ===
+length    = input.int(200, "Length")
+lineColor = input.color(#000000, "Line-Color")
+
+emaTop = ta.ema(input.source(high,  "Top-Source"), length)
+emaBot = ta.ema(input.source(close, "Bot-Source"), length)
+
+// === TREND CONFIRMATION FILTER (Tier 1) ===
+// A shorter EMA must agree with the band color before signals are colored bullish/bearish.
+// If the fast EMA disagrees, the fill stays neutral (gray) regardless of price position.
+trendLength = input.int(50, "Trend-Filter EMA Length", minval=1)
+showTrendEma = input.bool(false, "Show Trend-Filter EMA Line")
+emaTrend = ta.ema(close, trendLength)
+
+bullConfirmed = close > emaTop and emaTrend > emaBot
+bearConfirmed = close < emaBot and emaTrend < emaTop
+
+// === FILL COLOR ===
+fillColor = bearConfirmed ? input.color(color.rgb(255, 0, 0, 67),     "Fill-Color-Below")   :
+            bullConfirmed ? input.color(color.rgb(27,  255, 27, 67),  "Fill-Color-Above")   :
+                            input.color(color.rgb(120, 123, 134, 67), "Fill-Color-Neutral")
+
+// === PLOTS ===
+pTop = plot(emaTop,    color=lineColor)
+pBot = plot(emaBot,    color=lineColor)
+plot(showTrendEma ? emaTrend : na, color=color.orange, linewidth=1, title="Trend EMA")
+fill(pTop, pBot, color=fillColor, fillgaps=true)
