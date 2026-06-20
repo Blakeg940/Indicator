@@ -1,6 +1,7 @@
 //@version=6
 indicator("PlayBit EMA", "PB-EMA", overlay=true)
 
+// === ORIGINAL CODE ===
 length = input.int(200, "Length")
 lineColor = input.color(#000000, "Line-Color")
 emaTop = ta.ema(input.source(high, "Top-Source"), length)
@@ -12,14 +13,25 @@ pTop = plot(emaTop, color=lineColor)
 pBot = plot(emaBot, color=lineColor)
 fill(pTop, pBot, color=fillColor, fillgaps=true)
 
-// === ATR STOP-LOSS ===
-atrLength     = input.int(14, "ATR Length", group="Stop-Loss")
-atrMultiplier = input.float(1.5, "ATR Multiplier", step=0.1, group="Stop-Loss")
-showStops     = input.bool(true, "Show Stop-Loss Lines", group="Stop-Loss")
+// === PULLBACK STOP-LOSS ===
+// Activates only when price pulls back into the zone after a confirmed trend.
+// Stop is placed just outside the zone with a 0.5 ATR buffer.
+showStops = input.bool(true, "Show Stop-Loss Lines", group="Stop-Loss")
 
-atr       = ta.atr(atrLength)
-longStop  = close - atr * atrMultiplier
-shortStop = close + atr * atrMultiplier
+atr = ta.atr(14)
 
-plot(showStops and close > emaTop ? longStop  : na, "Long Stop",  color=color.red,   style=plot.style_linebr, linewidth=1)
-plot(showStops and close < emaBot ? shortStop : na, "Short Stop", color=color.green, style=plot.style_linebr, linewidth=1)
+wasGreen = close[1] > emaTop[1]  // trend was bullish last candle
+wasRed   = close[1] < emaBot[1]  // trend was bearish last candle
+
+inZone = close >= emaBot and close <= emaTop  // price is currently inside the band
+
+// Pullback conditions
+longPullback  = wasGreen and inZone  // bulls in control, price pulled into zone
+shortPullback = wasRed   and inZone  // bears in control, price pulled into zone
+
+// Stop levels: edge of zone + 0.5 ATR buffer
+longStopLevel  = emaBot - atr * 0.5
+shortStopLevel = emaTop + atr * 0.5
+
+plot(showStops and longPullback  ? longStopLevel  : na, "Long Stop",  color=color.red,   style=plot.style_linebr, linewidth=2)
+plot(showStops and shortPullback ? shortStopLevel : na, "Short Stop", color=color.green, style=plot.style_linebr, linewidth=2)
